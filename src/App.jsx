@@ -4,18 +4,21 @@ import { ref, set, onValue, push, get, remove } from 'firebase/database';
 
 function App() {
   const [role, setRole] = useState(null);
+  const [isAuth, setIsAuth] = useState(false); // 老師密碼驗證狀態
+  const [passwordInput, setPasswordInput] = useState(""); // 密碼輸入值
   const [currentQ, setCurrentQ] = useState("");
   const [hasAnswered, setHasAnswered] = useState(false);
   const [seatNumber, setSeatNumber] = useState(""); 
   const [allResponses, setAllResponses] = useState([]);
   const [correctAnswer, setCorrectAnswer] = useState("");
   
-  // 狀態設定
-  const [quizCount] = useState(10); // 預設 10 題
+  const [quizCount] = useState(10); 
   const [tempBank, setTempBank] = useState({}); 
   const options = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
-  // 監聽雲端資料
+  // 設定你的老師管理密碼
+  const TEACHER_PASSWORD = "1234"; 
+
   useEffect(() => {
     const gameRef = ref(db, 'current_game');
     onValue(gameRef, (snapshot) => {
@@ -35,13 +38,20 @@ function App() {
     });
   }, []);
 
-  // 老師功能：儲存題庫
+  const handleTeacherLogin = () => {
+    if (passwordInput === TEACHER_PASSWORD) {
+      setIsAuth(true);
+    } else {
+      alert("密碼錯誤！請重新輸入。");
+      setPasswordInput("");
+    }
+  };
+
   const saveQuizBank = () => {
     set(ref(db, 'quiz_bank'), tempBank);
     alert("題庫已成功儲存至雲端！");
   };
 
-  // 老師功能：重設所有資料
   const clearAllData = () => {
     if(window.confirm("確定要清空所有作答紀錄嗎？")) {
       remove(ref(db, 'responses'));
@@ -50,21 +60,14 @@ function App() {
     }
   };
 
-  // 老師功能：發送題目
   const sendQuestionWithBank = async (qId) => {
     const bankRef = ref(db, `quiz_bank/${qId}`);
     const snapshot = await get(bankRef);
     const ans = snapshot.exists() ? snapshot.val() : "";
     if (!ans) return alert(`請先在左側設定 ${qId} 的答案！`);
-
-    set(ref(db, 'current_game'), { 
-      question_id: qId, 
-      answer: ans, 
-      status: "voting" 
-    });
+    set(ref(db, 'current_game'), { question_id: qId, answer: ans, status: "voting" });
   };
 
-  // 學生功能：繳交答案
   const submitAnswer = (choice) => {
     if (!seatNumber || !currentQ) return;
     push(ref(db, `responses/${currentQ}`), {
@@ -76,14 +79,34 @@ function App() {
     setHasAnswered(true);
   };
 
-  // 初始角色選擇頁面
+  // 1. 初始角色選擇頁面
   if (!role) {
     return (
       <div style={layoutStyle}>
         <h1 style={{color: '#333'}}>🎓 課堂即時反饋系統</h1>
-        <p>請選擇您的身份</p>
-        <button onClick={() => setRole('teacher')} style={btnStyle}>我是老師 (控制台)</button>
-        <button onClick={() => setRole('student')} style={{...btnStyle, marginLeft: '10px', backgroundColor: '#4CAF50'}}>我是學生 (作答區)</button>
+        <button onClick={() => setRole('teacher')} style={btnStyle}>我是老師</button>
+        <button onClick={() => setRole('student')} style={{...btnStyle, marginLeft: '10px', backgroundColor: '#4CAF50'}}>我是學生</button>
+      </div>
+    );
+  }
+
+  // 2. 老師密碼驗證頁面
+  if (role === 'teacher' && !isAuth) {
+    return (
+      <div style={layoutStyle}>
+        <div style={cardStyle}>
+          <h3>🔐 管理者驗證</h3>
+          <input 
+            type="password" 
+            placeholder="請輸入密碼" 
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc', marginBottom: '10px', width: '80%'}}
+          />
+          <br />
+          <button onClick={handleTeacherLogin} style={btnStyle}>登入控制台</button>
+          <button onClick={() => setRole(null)} style={{...btnStyle, backgroundColor: '#666', marginTop: '10px', display: 'block', width: '100%'}}>返回</button>
+        </div>
       </div>
     );
   }
@@ -92,10 +115,9 @@ function App() {
     <div style={layoutStyle}>
       {role === 'teacher' ? (
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px' }}>
-          
           {/* 左側：題庫設定 */}
           <div style={{ ...cardStyle, textAlign: 'left', width: '320px' }}>
-            <h3 style={{marginTop: 0}}>⚙️ 1. 設定答案 (10個選項)</h3>
+            <h3 style={{marginTop: 0}}>⚙️ 1. 設定答案</h3>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               {Array.from({ length: quizCount }, (_, i) => `Q${i+1}`).map(q => (
                 <div key={q} style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
@@ -107,8 +129,9 @@ function App() {
                 </div>
               ))}
             </div>
-            <button onClick={saveQuizBank} style={{ ...btnStyle, backgroundColor: '#f39c12', width: '100%', marginTop: '15px' }}>儲存這 10 題答案</button>
+            <button onClick={saveQuizBank} style={{ ...btnStyle, backgroundColor: '#f39c12', width: '100%', marginTop: '15px' }}>儲存 10 題答案</button>
             <button onClick={clearAllData} style={{ ...btnStyle, backgroundColor: '#666', width: '100%', marginTop: '10px', fontSize: '12px' }}>清空所有作答數據</button>
+            <button onClick={() => setIsAuth(false)} style={{marginTop: '20px', border: 'none', background: 'none', color: '#999', cursor: 'pointer'}}>🔒 登出控制台</button>
           </div>
 
           {/* 右側：發題監控 */}
@@ -121,16 +144,14 @@ function App() {
                 ))}
               </div>
               <hr style={{margin: '20px 0', border: '0.5px solid #eee'}} />
-              <h4>目前題目：<span style={{color: '#0070f3'}}>{currentQ || "未發題"}</span> (正解：{correctAnswer || "?"})</h4>
+              <h4>目前：{currentQ || "未發題"} (正解：{correctAnswer || "?"})</h4>
               <div style={{ textAlign: 'left', maxHeight: '300px', overflowY: 'auto', backgroundColor: '#fafafa', padding: '10px', borderRadius: '8px' }}>
-                {allResponses.length === 0 ? <p style={{color: '#999', textAlign: 'center'}}>尚未有人繳交...</p> : 
-                  allResponses.map((res, i) => (
-                    <div key={i} style={{ padding: '5px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between' }}>
-                      <span><strong>{res.name}</strong></span>
-                      <span>選 {res.answer} {res.isCorrect ? '✅' : '❌'}</span>
-                    </div>
-                  ))
-                }
+                {allResponses.map((res, i) => (
+                  <div key={i} style={{ padding: '5px 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between' }}>
+                    <span><strong>{res.name}</strong></span>
+                    <span>選 {res.answer} {res.isCorrect ? '✅' : '❌'}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -176,7 +197,7 @@ function App() {
   );
 }
 
-// --- 樣式修復 (解決 LayoutStyle is not defined) ---
+// --- 樣式設定 ---
 const layoutStyle = { textAlign: 'center', padding: '20px', fontFamily: 'sans-serif', backgroundColor: '#f0f2f5', minHeight: '100vh' };
 const btnStyle = { padding: '12px 20px', cursor: 'pointer', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold' };
 const cardStyle = { backgroundColor: 'white', padding: '25px', borderRadius: '15px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', display: 'inline-block', verticalAlign: 'top' };
